@@ -14,12 +14,6 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-type EmptySlide struct{}
-
-func (EmptySlide) Draw(img draw.Image, bounds image.Rectangle, attr PresConfig) {
-	draw.Draw(img, bounds, attr.Background, image.Point{}, draw.Src)
-}
-
 var formats = []struct {
 	Decode   func(io.Reader) (image.Image, error)
 	Offset   int
@@ -129,8 +123,6 @@ func positionImage(src image.Rectangle, box image.Rectangle, align Alignment, va
 }
 
 func (s *ImageSlide) Draw(img draw.Image, bounds image.Rectangle, attr PresConfig) {
-	draw.Draw(img, bounds, attr.Background, image.Point{}, draw.Src)
-
 	bounds = attr.Margin.Apply(bounds)
 	imgr := positionImage(s.src.Bounds(), bounds, attr.Align, attr.VAlign)
 	xdraw.BiLinear.Scale(img, imgr, s.src, s.src.Bounds(), draw.Over, nil)

@@ -22,6 +22,11 @@ type Slide struct {
 }
 
 func (s *Slide) Draw(img draw.Image, bounds image.Rectangle) {
+	draw.Draw(img, bounds, s.Conf.Background, image.Point{}, draw.Src)
+
+	if len(s.Content) == 0 {
+		return
+	}
 	dw := img.Bounds().Dx() / len(s.Content)
 	for i, cnt := range s.Content {
 		cnt.Draw(img, image.Rect(bounds.Min.X+dw*i, bounds.Min.Y, bounds.Min.X+dw*(i+1), bounds.Max.Y), s.Conf)
@@ -52,15 +57,32 @@ func ParsePresentation(r io.Reader) (*Presentation, error) {
 		case line[0] == '#':
 			/* ignore line -> comment */
 			continue
+		case line == "%%%":
+			if markup.Dirty() {
+				slides = append(slides, markup.Text())
+				markup.Reset()
+			}
+		case line == "---":
+			if markup.Dirty() {
+				slides = append(slides, markup.Text())
+				markup.Reset()
+			}
+			pres.Slides = append(pres.Slides, Slide{slideconf, slides})
+			slides = nil
+			slideconf = globalconf
 		case strings.HasPrefix(line, "%set "):
 			line = strings.TrimLeftFunc(line[4:], unicode.IsSpace)
-			globalconf.AddAttribute(line)
+			if err := globalconf.AddAttribute(line); err != nil {
+				fmt.Fprintf(os.Stderr, "option `%s`: %v\n", line, err)
+			}
 			if markup.Dirty() {
 				fmt.Fprintf(os.Stderr, "option not at beginning of slide\n")
 			}
 		case strings.HasPrefix(line, "%"):
 			line = strings.TrimLeftFunc(line[1:], unicode.IsSpace)
-			slideconf.AddAttribute(line)
+			if err := slideconf.AddAttribute(line); err != nil {
+				fmt.Fprintf(os.Stderr, "option `%s`: %v\n", line, err)
+			}
 			if markup.Dirty() {
 				fmt.Fprintf(os.Stderr, "option not at beginning of slide\n")
 			}
@@ -76,19 +98,6 @@ func ParsePresentation(r io.Reader) (*Presentation, error) {
 				os.Exit(1)
 			}
 			slides = append(slides, slide)
-		case line == "%%%":
-			if markup.Dirty() {
-				slides = append(slides, markup.Text())
-				markup.Reset()
-			}
-		case line == "---":
-			if markup.Dirty() {
-				slides = append(slides, markup.Text())
-				markup.Reset()
-			}
-			pres.Slides = append(pres.Slides, Slide{slideconf, slides})
-			slides = nil
-			slideconf = globalconf
 		default:
 			markup.Feed(line)
 		}

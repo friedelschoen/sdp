@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -38,9 +39,6 @@ type MarkupText []Markup
 //   - Italic:         *text* or _text_
 //   - Underline:      __text__
 //   - Strikethrough:  ~~text~~
-//
-// Nesting works for the non-code styles in a straightforward way; inline code is
-// treated as opaque until the next unescaped backtick.
 type MarkupBuilder struct {
 	out   MarkupText
 	buf   strings.Builder
@@ -152,7 +150,7 @@ func hasBit[T ~int](base, has T) bool {
 	return base&has == has
 }
 
-func (a MarkupAttribute) font(cfg PresConfig) font.Face {
+func (a MarkupAttribute) font(cfg PresConfig) *opentype.Font {
 	switch {
 	case hasBit(a, Code|Bold|Italic):
 		if cfg.MonoFonts.BoldItalic != nil {
@@ -195,10 +193,9 @@ func (a MarkupAttribute) font(cfg PresConfig) font.Face {
 }
 
 // measureText was misspelled as MessureText; fixed and call sites updated.
-func (a MarkupAttribute) measureText(s string, cfg PresConfig) fixed.Int26_6 {
-	face := a.font(cfg)
-
+func (a MarkupAttribute) measureText(s string, size float64, cfg PresConfig) fixed.Int26_6 {
 	var x fixed.Int26_6
+	face, _ := opentype.NewFace(a.font(cfg), &opentype.FaceOptions{DPI: 72, Size: size})
 	prevRune := rune(-1)
 	for _, r := range s {
 		if prevRune != -1 {
@@ -220,6 +217,14 @@ func (a MarkupAttribute) measureText(s string, cfg PresConfig) fixed.Int26_6 {
 func (m MarkupText) words() iter.Seq2[MarkupAttribute, []rune] {
 	return func(yield func(MarkupAttribute, []rune) bool) {
 		for _, part := range m {
+			if part.Attr&Code != 0 {
+				/* do not split code-sections */
+				if !yield(part.Attr, []rune(part.Text)) {
+					return
+				}
+				continue
+			}
+
 			var runes []rune
 			wasSpace := false
 			for _, r := range part.Text {
@@ -240,7 +245,7 @@ func (m MarkupText) words() iter.Seq2[MarkupAttribute, []rune] {
 	}
 }
 
-func (m MarkupText) wrapLines(bounds image.Rectangle, cfg PresConfig) iter.Seq2[fixed.Int26_6, MarkupText] {
+func (m MarkupText) wrapLines(bounds image.Rectangle, size float64, cfg PresConfig) iter.Seq2[fixed.Int26_6, MarkupText] {
 	return func(yield func(fixed.Int26_6, MarkupText) bool) {
 		var width fixed.Int26_6
 		var line MarkupText
@@ -259,11 +264,17 @@ func (m MarkupText) wrapLines(bounds image.Rectangle, cfg PresConfig) iter.Seq2[
 					continue
 				}
 			}
-			adv := attr.measureText(string(word), cfg)
+			adv := attr.measureText(string(word), size, cfg)
 			if (width + adv).Ceil() > bounds.Dx() {
+				if width == 0 {
+					/* only one word already exceeds the line */
+					yield(-1, nil)
+					return
+				}
 				if !yield(width, line) {
 					return
 				}
+
 				line = nil
 				width = 0
 				if unicode.IsSpace(word[0]) {
@@ -279,9 +290,10 @@ func (m MarkupText) wrapLines(bounds image.Rectangle, cfg PresConfig) iter.Seq2[
 	}
 }
 
-func (m MarkupText) height(cfg PresConfig) (h, asc fixed.Int26_6) {
+func (m MarkupText) height(size float64, cfg PresConfig) (h, asc fixed.Int26_6) {
 	for _, part := range m {
-		face := part.Attr.font(cfg)
+		font := part.Attr.font(cfg)
+		face, _ := opentype.NewFace(font, &opentype.FaceOptions{Size: size, DPI: 72})
 		h = max(h, face.Metrics().Height)
 		asc = max(asc, face.Metrics().Ascent)
 	}
@@ -310,7 +322,7 @@ func (run *lineRun) closeRun(dot fixed.Point26_6) (image.Rectangle, bool) {
 		y = dot.Y + fixed.I(thick)
 	} else {
 		// strikethrough ongeveer halverwege de x-height (≈ helft van ascent)
-		y = dot.Y - met.Ascent/2
+		y = dot.Y - met.Ascent/3
 	}
 	run.active = false
 	if dot.X <= run.start {
@@ -334,18 +346,36 @@ func (m MarkupText) String() string {
 	return buf.String()
 }
 
+func (m MarkupText) totalHeight(bounds image.Rectangle, size float64, cfg PresConfig) (totalHeight fixed.Int26_6, ok bool) {
+	ok = true
+	for w, text := range m.wrapLines(bounds, size, cfg) {
+		if w == -1 {
+			ok = false
+			return
+		}
+		if text == nil {
+			totalHeight += fixed.I(int(size * cfg.NewlineSpacing))
+			continue
+		}
+		h, _ := text.height(size, cfg)
+		totalHeight += h
+	}
+	return
+}
+
 func (m MarkupText) Draw(img draw.Image, bounds image.Rectangle, cfg PresConfig) {
-	draw.Draw(img, bounds, cfg.Background, image.Point{}, draw.Src)
 	bounds = cfg.Margin.Apply(bounds)
 
 	var totalHeight fixed.Int26_6
-	for _, text := range m.wrapLines(bounds, cfg) {
-		if text == nil {
-			totalHeight += fixed.I(cfg.NewlineSpacing)
-		} else {
-			h, _ := text.height(cfg)
-			totalHeight += h
+	var size float64
+	for i := float64(1); i < 100; i += 1 {
+		h, ok := m.totalHeight(bounds, i, cfg)
+		if !ok || h.Ceil() >= bounds.Dy() {
+			break
 		}
+
+		totalHeight = h
+		size = i
 	}
 
 	var dot fixed.Point26_6
@@ -360,12 +390,12 @@ func (m MarkupText) Draw(img draw.Image, bounds image.Rectangle, cfg PresConfig)
 		yOffset = fixed.I(bounds.Dy()) - totalHeight
 	}
 
-	for width, text := range m.wrapLines(bounds, cfg) {
+	for width, text := range m.wrapLines(bounds, size, cfg) {
 		if text == nil {
-			yOffset += fixed.I(cfg.NewlineSpacing)
+			yOffset += fixed.I(int(size * cfg.NewlineSpacing))
 			continue
 		}
-		h, asc := text.height(cfg)
+		h, asc := text.height(size, cfg)
 
 		switch cfg.Align {
 		case Left:
@@ -383,7 +413,7 @@ func (m MarkupText) Draw(img draw.Image, bounds image.Rectangle, cfg PresConfig)
 		st := lineRun{underline: false} // strikethrough-run
 
 		for _, part := range text {
-			face := part.Attr.font(cfg)
+			face, _ := opentype.NewFace(part.Attr.font(cfg), &opentype.FaceOptions{DPI: 72, Size: size})
 
 			// start/stop runs op stijlwissel per part
 			hasUL := part.Attr&Underline != 0

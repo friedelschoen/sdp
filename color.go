@@ -20,6 +20,7 @@ func parseColor(str string) (color.Color, error) {
 		}
 		return color, nil
 	}
+	str = str[1:] /* skip over hash */
 
 	var r, g, b, a uint8
 	switch len(str) {

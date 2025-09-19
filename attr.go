@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gobolditalic"
 	"golang.org/x/image/font/gofont/goitalic"
@@ -18,14 +17,15 @@ import (
 	"golang.org/x/image/font/opentype"
 )
 
-type Margins struct{ Left, Right, Top, Bottom int }
+type Margins struct{ Left, Right, Top, Bottom float64 }
 
 /* Apply applies the margin-boundaries to `r` and returns a copy */
 func (m Margins) Apply(r image.Rectangle) image.Rectangle {
-	r.Min.X += m.Left
-	r.Min.Y += m.Top
-	r.Max.X -= m.Right
-	r.Max.Y -= m.Bottom
+	w, h := r.Dx(), r.Dy()
+	r.Min.X += int(float64(w) * m.Left)
+	r.Min.Y += int(float64(h) * m.Top)
+	r.Max.X -= int(float64(w) * m.Right)
+	r.Max.Y -= int(float64(h) * m.Bottom)
 	return r
 }
 
@@ -46,10 +46,10 @@ const (
 )
 
 type FontCollection struct {
-	Regular    font.Face
-	Bold       font.Face
-	Italic     font.Face
-	BoldItalic font.Face
+	Regular    *opentype.Font
+	Bold       *opentype.Font
+	Italic     *opentype.Font
+	BoldItalic *opentype.Font
 }
 
 type PresConfig struct {
@@ -61,7 +61,7 @@ type PresConfig struct {
 	Align          Alignment
 	VAlign         VerticalAlignment
 	TabSize        int
-	NewlineSpacing int
+	NewlineSpacing float64
 }
 
 func (c *PresConfig) AddAttribute(str string) error {
@@ -89,68 +89,70 @@ func (c *PresConfig) AddAttribute(str string) error {
 		if !hasValue {
 			return fmt.Errorf("`%s` requires a value", key)
 		}
-		value = strings.TrimSuffix(value, "px")
+		value = strings.TrimSuffix(value, "%")
 		px, err := strconv.Atoi(value)
 		if err != nil {
 			return err
 		}
-		c.Margin.Left = px
+		c.Margin.Left = float64(px) / 100
 	case "right":
 		if !hasValue {
 			return fmt.Errorf("`%s` requires a value", key)
 		}
-		value = strings.TrimSuffix(value, "px")
+		value = strings.TrimSuffix(value, "%")
 		px, err := strconv.Atoi(value)
 		if err != nil {
 			return err
 		}
-		c.Margin.Right = px
+		c.Margin.Right = float64(px) / 100
 	case "top":
 		if !hasValue {
 			return fmt.Errorf("`%s` requires a value", key)
 		}
-		value = strings.TrimSuffix(value, "px")
+		value = strings.TrimSuffix(value, "%")
 		px, err := strconv.Atoi(value)
 		if err != nil {
 			return err
 		}
-		c.Margin.Top = px
+		c.Margin.Top = float64(px) / 100
 	case "bottom":
 		if !hasValue {
 			return fmt.Errorf("`%s` requires a value", key)
 		}
-		value = strings.TrimSuffix(value, "px")
+		value = strings.TrimSuffix(value, "%")
 		px, err := strconv.Atoi(value)
 		if err != nil {
 			return err
 		}
-		c.Margin.Bottom = px
+		c.Margin.Bottom = float64(px) / 100
 	case "margin":
 		if !hasValue {
 			return fmt.Errorf("`%s` requires a value", key)
 		}
 		first, second, hasSecond := strings.Cut(value, " ")
 
-		first = strings.TrimSuffix(first, "px")
+		first = strings.TrimSuffix(first, "%")
 		firstPx, err := strconv.Atoi(first)
 		if err != nil {
 			return err
 		}
+		firstPxf := float64(firstPx) / 100
 		if !hasSecond {
-			c.Margin.Left = firstPx
-			c.Margin.Right = firstPx
-			c.Margin.Top = firstPx
-			c.Margin.Bottom = firstPx
+			c.Margin.Left = firstPxf
+			c.Margin.Right = firstPxf
+			c.Margin.Top = firstPxf
+			c.Margin.Bottom = firstPxf
 		} else {
-			second = strings.TrimSuffix(second, "px")
+			second = strings.TrimSuffix(second, "%")
 			secondPx, err := strconv.Atoi(second)
 			if err != nil {
 				return err
 			}
-			c.Margin.Left = secondPx
-			c.Margin.Right = secondPx
-			c.Margin.Top = firstPx
-			c.Margin.Bottom = firstPx
+			secondPxf := float64(secondPx) / 100
+			c.Margin.Left = secondPxf
+			c.Margin.Right = secondPxf
+			c.Margin.Top = firstPxf
+			c.Margin.Bottom = firstPxf
 		}
 	case "align":
 		if !hasValue {
@@ -193,7 +195,7 @@ func (c *PresConfig) AddAttribute(str string) error {
 		if !hasValue {
 			return fmt.Errorf("`%s` requires a value", key)
 		}
-		times, err := strconv.Atoi(value)
+		times, err := strconv.ParseFloat(value, 64)
 		if err != nil {
 			return err
 		}
@@ -205,19 +207,12 @@ func (c *PresConfig) AddAttribute(str string) error {
 }
 
 func defaultConf() PresConfig {
-	makeFace := func(data []byte) font.Face {
+	makeFace := func(data []byte) *opentype.Font {
 		font, err := opentype.Parse(data)
 		if err != nil {
 			panic(fmt.Errorf("unable to parse Go-font: %w", err))
 		}
-		face, err := opentype.NewFace(font, &opentype.FaceOptions{
-			DPI:  72,
-			Size: 15,
-		})
-		if err != nil {
-			panic(fmt.Errorf("unable to parse Go-font: %w", err))
-		}
-		return face
+		return font
 	}
 	return PresConfig{
 		Foreground: image.Black,
@@ -234,10 +229,10 @@ func defaultConf() PresConfig {
 			Italic:     makeFace(gomonoitalic.TTF),
 			BoldItalic: makeFace(gomonobolditalic.TTF),
 		},
-		Margin:         Margins{10, 10, 10, 10},
+		Margin:         Margins{0.1, 0.1, 0.1, 0.1},
 		Align:          Center,
 		VAlign:         Middle,
 		TabSize:        4,
-		NewlineSpacing: 10,
+		NewlineSpacing: 1,
 	}
 }

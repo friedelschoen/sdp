@@ -7,6 +7,15 @@ import (
 	"strings"
 
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gobolditalic"
+	"golang.org/x/image/font/gofont/goitalic"
+	"golang.org/x/image/font/gofont/gomono"
+	"golang.org/x/image/font/gofont/gomonobold"
+	"golang.org/x/image/font/gofont/gomonobolditalic"
+	"golang.org/x/image/font/gofont/gomonoitalic"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
 )
 
 type Margins struct{ Left, Right, Top, Bottom int }
@@ -183,4 +192,40 @@ func (c *PresConfig) AddAttribute(str string) error {
 		return fmt.Errorf("invalid attribute `%s`", key)
 	}
 	return nil
+}
+
+func defaultConf() PresConfig {
+	makeFace := func(data []byte) font.Face {
+		font, err := opentype.Parse(data)
+		if err != nil {
+			panic(fmt.Errorf("unable to parse Go-font: %w", err))
+		}
+		face, err := opentype.NewFace(font, &opentype.FaceOptions{
+			DPI:  72,
+			Size: 15,
+		})
+		if err != nil {
+			panic(fmt.Errorf("unable to parse Go-font: %w", err))
+		}
+		return face
+	}
+	return PresConfig{
+		Foreground: image.Black,
+		Background: image.White,
+		Fonts: FontCollection{
+			Regular:    makeFace(goregular.TTF),
+			Bold:       makeFace(gobold.TTF),
+			Italic:     makeFace(goitalic.TTF),
+			BoldItalic: makeFace(gobolditalic.TTF),
+		},
+		MonoFonts: FontCollection{
+			Regular:    makeFace(gomono.TTF),
+			Bold:       makeFace(gomonobold.TTF),
+			Italic:     makeFace(gomonoitalic.TTF),
+			BoldItalic: makeFace(gomonobolditalic.TTF),
+		},
+		Margin: Margins{10, 10, 10, 10},
+		Align:  Center,
+		VAlign: Middle,
+	}
 }

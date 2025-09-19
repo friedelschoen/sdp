@@ -38,96 +38,112 @@ type MarkupText []Markup
 //   - Italic:         *text* or _text_
 //   - Underline:      __text__
 //   - Strikethrough:  ~~text~~
-//   - Escapes:        \*, \_, \~, \`, \\, \#, etc.
 //
 // Nesting works for the non-code styles in a straightforward way; inline code is
 // treated as opaque until the next unescaped backtick.
-func ParseMarkup(content string) MarkupText {
-	var out MarkupText
-	var buf strings.Builder
-	var state MarkupAttribute
+type MarkupBuilder struct {
+	out   MarkupText
+	buf   strings.Builder
+	state MarkupAttribute
+}
 
-	emit := func() {
-		if buf.Len() == 0 {
-			return
-		}
-		out = append(out, Markup{
-			Attr: state,
-			Text: buf.String(),
-		})
-		buf.Reset()
+func (b *MarkupBuilder) emit() {
+	if b.buf.Len() == 0 {
+		return
 	}
+	b.out = append(b.out, Markup{
+		Attr: b.state,
+		Text: b.buf.String(),
+	})
+	b.buf.Reset()
+}
+
+func (b *MarkupBuilder) Feed(content string) {
 
 	for len(content) > 0 {
 		// Markers—langste eerst: **, __, ~~, dan *, _
 		switch {
-		case state&Code == 0 && strings.HasPrefix(content, "\\**"):
-			buf.WriteString("**")
+		case b.state&Code == 0 && strings.HasPrefix(content, "\\**"):
+			b.buf.WriteString("**")
 			content = content[3:]
 			continue
-		case state&Code == 0 && strings.HasPrefix(content, "\\__"):
-			buf.WriteString("__")
+		case b.state&Code == 0 && strings.HasPrefix(content, "\\__"):
+			b.buf.WriteString("__")
 			content = content[3:]
 			continue
-		case state&Code == 0 && strings.HasPrefix(content, "\\~~"):
-			buf.WriteString("~~")
+		case b.state&Code == 0 && strings.HasPrefix(content, "\\~~"):
+			b.buf.WriteString("~~")
 			content = content[3:]
 			continue
-		case state&Code == 0 && strings.HasPrefix(content, "\\*"):
-			buf.WriteRune('*')
+		case b.state&Code == 0 && strings.HasPrefix(content, "\\*"):
+			b.buf.WriteRune('*')
 			content = content[2:]
 			continue
-		case state&Code == 0 && strings.HasPrefix(content, "\\_"):
-			buf.WriteRune('_')
+		case b.state&Code == 0 && strings.HasPrefix(content, "\\_"):
+			b.buf.WriteRune('_')
 			content = content[2:]
 			continue
 		case strings.HasPrefix(content, "\\`"):
-			buf.WriteRune('`')
+			b.buf.WriteRune('`')
 			content = content[2:]
 			continue
 		case strings.HasPrefix(content, "\\\\"):
-			buf.WriteRune('\\')
+			b.buf.WriteRune('\\')
 			content = content[2:]
 			continue
-		case state&Code == 0 && strings.HasPrefix(content, "**"):
-			emit()
-			state ^= Bold
+		case b.state&Code == 0 && strings.HasPrefix(content, "**"):
+			b.emit()
+			b.state ^= Bold
 			content = content[2:]
 			continue
-		case state&Code == 0 && strings.HasPrefix(content, "__"):
-			emit()
-			state ^= Underline
+		case b.state&Code == 0 && strings.HasPrefix(content, "__"):
+			b.emit()
+			b.state ^= Underline
 			content = content[2:]
 			continue
-		case state&Code == 0 && strings.HasPrefix(content, "~~"):
-			emit()
-			state ^= Strikethrough
+		case b.state&Code == 0 && strings.HasPrefix(content, "~~"):
+			b.emit()
+			b.state ^= Strikethrough
 			content = content[2:]
 			continue
-		case state&Code == 0 && strings.HasPrefix(content, "*"):
-			emit()
-			state ^= Italic
+		case b.state&Code == 0 && strings.HasPrefix(content, "*"):
+			b.emit()
+			b.state ^= Italic
 			content = content[1:]
 			continue
-		case state&Code == 0 && strings.HasPrefix(content, "_"):
-			emit()
-			state ^= Italic
+		case b.state&Code == 0 && strings.HasPrefix(content, "_"):
+			b.emit()
+			b.state ^= Italic
 			content = content[1:]
 			continue
 		case strings.HasPrefix(content, "`"):
-			emit()
-			state ^= Code
+			b.emit()
+			b.state ^= Code
 			content = content[1:]
 			continue
 		default:
 			chr, sz := utf8.DecodeRuneInString(content)
-			buf.WriteRune(chr)
+			b.buf.WriteRune(chr)
 			content = content[sz:]
 		}
 	}
+	b.emit()
+}
 
-	emit()
-	return out
+func (b *MarkupBuilder) Text() MarkupText {
+	b.emit() /* flush all contents */
+
+	return b.out
+}
+
+func (b *MarkupBuilder) Dirty() bool {
+	return len(b.out) != 0 || b.buf.Len() != 0 || b.state != 0
+}
+
+func (b *MarkupBuilder) Reset() {
+	b.out = nil
+	b.buf.Reset()
+	b.state = 0
 }
 
 func hasBit[T ~int](base, has T) bool {
@@ -137,19 +153,40 @@ func hasBit[T ~int](base, has T) bool {
 func (a MarkupAttribute) font(cfg PresConfig) font.Face {
 	switch {
 	case hasBit(a, Code|Bold|Italic):
-		return cfg.MonoFonts.BoldItalic
+		if cfg.MonoFonts.BoldItalic != nil {
+			return cfg.MonoFonts.BoldItalic
+		}
+		fallthrough
 	case hasBit(a, Code|Bold):
-		return cfg.MonoFonts.Bold
+		if cfg.MonoFonts.Bold != nil {
+			return cfg.MonoFonts.Bold
+		}
+		fallthrough
 	case hasBit(a, Code|Italic):
-		return cfg.MonoFonts.Italic
+		if cfg.MonoFonts.Italic != nil {
+			return cfg.MonoFonts.Italic
+		}
+		fallthrough
 	case hasBit(a, Code):
-		return cfg.MonoFonts.Regular
+		if cfg.MonoFonts.Regular != nil {
+			return cfg.MonoFonts.Regular
+		}
+		fallthrough
 	case hasBit(a, Bold|Italic):
-		return cfg.Fonts.BoldItalic
+		if cfg.Fonts.BoldItalic != nil {
+			return cfg.Fonts.BoldItalic
+		}
+		fallthrough
 	case hasBit(a, Bold):
-		return cfg.Fonts.Bold
+		if cfg.Fonts.Bold != nil {
+			return cfg.Fonts.Bold
+		}
+		fallthrough
 	case hasBit(a, Italic):
-		return cfg.Fonts.Italic
+		if cfg.Fonts.Italic != nil {
+			return cfg.Fonts.Italic
+		}
+		fallthrough
 	default:
 		return cfg.Fonts.Regular
 	}

@@ -51,27 +51,27 @@ func parseColor(str string) (color.Color, error) {
 		a = 0xFF
 	case 4: // r g b a  (each nibble doubled)
 		var ok bool
-		if r, ok = parseNibbleDup(str[0]); !ok {
+		if r, ok = parseByte(str[0]); !ok {
 			return nil, ErrInvalidHexColor
 		}
-		if g, ok = parseNibbleDup(str[1]); !ok {
+		if g, ok = parseByte(str[1]); !ok {
 			return nil, ErrInvalidHexColor
 		}
-		if b, ok = parseNibbleDup(str[2]); !ok {
+		if b, ok = parseByte(str[2]); !ok {
 			return nil, ErrInvalidHexColor
 		}
-		if a, ok = parseNibbleDup(str[3]); !ok {
+		if a, ok = parseByte(str[3]); !ok {
 			return nil, ErrInvalidHexColor
 		}
 	case 3: // r g b (each nibble doubled)
 		var ok bool
-		if r, ok = parseNibbleDup(str[0]); !ok {
+		if r, ok = parseByte(str[0]); !ok {
 			return nil, ErrInvalidHexColor
 		}
-		if g, ok = parseNibbleDup(str[1]); !ok {
+		if g, ok = parseByte(str[1]); !ok {
 			return nil, ErrInvalidHexColor
 		}
-		if b, ok = parseNibbleDup(str[2]); !ok {
+		if b, ok = parseByte(str[2]); !ok {
 			return nil, ErrInvalidHexColor
 		}
 		a = 0xFF
@@ -81,16 +81,17 @@ func parseColor(str string) (color.Color, error) {
 	return color.RGBA{R: r, G: g, B: b, A: a}, nil
 }
 
-func parseNibbleDup(c byte) (uint8, bool) {
-	n, ok := hexNibble(c)
-	if !ok {
-		return 0, false
+func parseByte(c ...byte) (uint8, bool) {
+	var h, l byte
+	switch len(c) {
+	case 1:
+		h = c[0]
+		l = c[0]
+	case 2:
+		h = c[0]
+		l = c[1]
 	}
-	// Duplicate nibble: e.g., 'a' -> 0xaa
-	return (n << 4) | n, true
-}
 
-func parseByte(h, l byte) (uint8, bool) {
 	hi, ok1 := hexNibble(h)
 	lo, ok2 := hexNibble(l)
 	if !ok1 || !ok2 {

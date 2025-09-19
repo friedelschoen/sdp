@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"image"
 	"image/draw"
 	"iter"
@@ -317,7 +316,6 @@ func (m MarkupText) Draw(img draw.Image, bounds image.Rectangle, cfg PresConfig)
 
 	for width, text := range m.wrapLines(bounds, cfg) {
 		h, asc := text.height(cfg)
-		fmt.Printf("%q -> %d\n", text.String(), width.Ceil())
 
 		switch cfg.Align {
 		case Left:

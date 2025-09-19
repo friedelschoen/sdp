@@ -59,7 +59,9 @@ func (b *MarkupBuilder) emit() {
 }
 
 func (b *MarkupBuilder) Feed(content string) {
-
+	if !b.Dirty() {
+		content = strings.TrimLeft(content, "\n")
+	}
 	for len(content) > 0 {
 		// Markers—langste eerst: **, __, ~~, dan *, _
 		switch {
@@ -247,6 +249,9 @@ func (m MarkupText) wrapLines(bounds image.Rectangle, cfg PresConfig) iter.Seq2[
 				if !yield(width, line) {
 					return
 				}
+				if !yield(0, nil) {
+					return
+				}
 				line = nil
 				width = 0
 				word = word[nl+1:]
@@ -335,8 +340,12 @@ func (m MarkupText) Draw(img draw.Image, bounds image.Rectangle, cfg PresConfig)
 
 	var totalHeight fixed.Int26_6
 	for _, text := range m.wrapLines(bounds, cfg) {
-		h, _ := text.height(cfg)
-		totalHeight += h
+		if text == nil {
+			totalHeight += fixed.I(cfg.NewlineSpacing)
+		} else {
+			h, _ := text.height(cfg)
+			totalHeight += h
+		}
 	}
 
 	var dot fixed.Point26_6
@@ -352,6 +361,10 @@ func (m MarkupText) Draw(img draw.Image, bounds image.Rectangle, cfg PresConfig)
 	}
 
 	for width, text := range m.wrapLines(bounds, cfg) {
+		if text == nil {
+			yOffset += fixed.I(cfg.NewlineSpacing)
+			continue
+		}
 		h, asc := text.height(cfg)
 
 		switch cfg.Align {

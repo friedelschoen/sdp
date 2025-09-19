@@ -53,14 +53,15 @@ type FontCollection struct {
 }
 
 type PresConfig struct {
-	Foreground image.Image /* uniform */
-	Background image.Image /* uniform */
-	Fonts      FontCollection
-	MonoFonts  FontCollection
-	Margin     Margins
-	Align      Alignment
-	VAlign     VerticalAlignment
-	TabSize    int
+	Foreground     image.Image /* uniform */
+	Background     image.Image /* uniform */
+	Fonts          FontCollection
+	MonoFonts      FontCollection
+	Margin         Margins
+	Align          Alignment
+	VAlign         VerticalAlignment
+	TabSize        int
+	NewlineSpacing int
 }
 
 func (c *PresConfig) AddAttribute(str string) error {
@@ -188,6 +189,15 @@ func (c *PresConfig) AddAttribute(str string) error {
 			return err
 		}
 		c.TabSize = times
+	case "newline-spacing":
+		if !hasValue {
+			return fmt.Errorf("`%s` requires a value", key)
+		}
+		times, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		c.NewlineSpacing = times
 	default:
 		return fmt.Errorf("invalid attribute `%s`", key)
 	}
@@ -224,8 +234,10 @@ func defaultConf() PresConfig {
 			Italic:     makeFace(gomonoitalic.TTF),
 			BoldItalic: makeFace(gomonobolditalic.TTF),
 		},
-		Margin: Margins{10, 10, 10, 10},
-		Align:  Center,
-		VAlign: Middle,
+		Margin:         Margins{10, 10, 10, 10},
+		Align:          Center,
+		VAlign:         Middle,
+		TabSize:        4,
+		NewlineSpacing: 10,
 	}
 }

@@ -1,9 +1,11 @@
 package sdp
 
 import (
+	"fmt"
 	"image"
 	"image/draw"
 	"iter"
+	"math"
 	"slices"
 	"strings"
 	"unicode"
@@ -271,6 +273,7 @@ func (m MarkupText) wrapLines(bounds image.Rectangle, size float64, cfg PresConf
 		var width fixed.Int26_6
 		var line MarkupText
 		for attr, word := range m.words() {
+			fmt.Printf("- %q\n", string(word))
 			if nl := slices.Index(word, '\n'); nl != -1 {
 				if !yield(width, line) {
 					return
@@ -371,7 +374,6 @@ func (m MarkupText) totalHeight(bounds image.Rectangle, size float64, cfg PresCo
 	for w, text := range m.wrapLines(bounds, size, cfg) {
 		if w == -1 {
 			ok = false
-			return
 		}
 		if text == nil {
 			totalHeight += fixed.I(int(size * cfg.NewlineSpacing))
@@ -383,19 +385,41 @@ func (m MarkupText) totalHeight(bounds image.Rectangle, size float64, cfg PresCo
 	return
 }
 
-func (m MarkupText) Draw(img draw.Image, bounds image.Rectangle, cfg PresConfig) {
-	bounds = cfg.Margin.Apply(bounds)
+func (m MarkupText) findSize(bounds image.Rectangle, cfg PresConfig) (size float64, height fixed.Int26_6) {
+	lo := float64(1)
+	hi := float64(1)
+	for {
+		h, ok := m.totalHeight(bounds, hi, cfg)
+		if !ok || h.Ceil() >= bounds.Dy() {
+			break
+		}
+		lo = hi
+		hi *= 2
+	}
 
-	var totalHeight fixed.Int26_6
-	var size float64
-	for i := float64(1); i < 100; i += 1 {
+	for i := lo; i < hi; i += 0.5 {
 		h, ok := m.totalHeight(bounds, i, cfg)
 		if !ok || h.Ceil() >= bounds.Dy() {
 			break
 		}
 
-		totalHeight = h
+		height = h
 		size = i
+	}
+	return
+}
+
+func (m MarkupText) Draw(img draw.Image, bounds image.Rectangle, cfg PresConfig) {
+	bounds = cfg.Margin.Apply(bounds)
+
+	var totalHeight fixed.Int26_6
+	size := cfg.FontSize
+	if size == 0 {
+		size, totalHeight = m.findSize(bounds, cfg)
+	} else {
+		area := float64(bounds.Dx()*bounds.Dx() + bounds.Dy()*bounds.Dy())
+		size = size * math.Sqrt(area) / 100
+		totalHeight, _ = m.totalHeight(bounds, size, cfg)
 	}
 
 	var dot fixed.Point26_6

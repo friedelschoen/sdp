@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/gif"
 	"image/jpeg"
@@ -126,4 +127,20 @@ func (s *ImageSlide) Draw(img draw.Image, bounds image.Rectangle, attr PresConfi
 	bounds = attr.Margin.Apply(bounds)
 	imgr := positionImage(s.src.Bounds(), bounds, attr.Align, attr.VAlign)
 	xdraw.BiLinear.Scale(img, imgr, s.src, s.src.Bounds(), draw.Over, nil)
+}
+
+func FinalSlide(cfg PresConfig) Slide {
+	cfg.Background = image.NewUniform(color.Gray{50})
+	cfg.Foreground = image.NewUniform(color.Gray{200})
+	cfg.FontSize = 3
+	cfg.VAlign = Top
+
+	return Slide{cfg, []SlideContent{
+		MarkupText{
+			Markup{
+				Attr: Bold,
+				Text: "End of Presentation",
+			},
+		},
+	}}
 }

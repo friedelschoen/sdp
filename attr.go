@@ -62,6 +62,7 @@ type PresConfig struct {
 	VAlign         VerticalAlignment
 	TabSize        int
 	NewlineSpacing float64
+	BigText        float64
 }
 
 func (c *PresConfig) AddAttribute(str string) error {
@@ -200,6 +201,15 @@ func (c *PresConfig) AddAttribute(str string) error {
 			return err
 		}
 		c.NewlineSpacing = times
+	case "bigtext":
+		if !hasValue {
+			return fmt.Errorf("`%s` requires a value", key)
+		}
+		times, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return err
+		}
+		c.BigText = times
 	default:
 		return fmt.Errorf("invalid attribute `%s`", key)
 	}
@@ -234,5 +244,6 @@ func defaultConf() PresConfig {
 		VAlign:         Middle,
 		TabSize:        4,
 		NewlineSpacing: 1,
+		BigText:        1.2,
 	}
 }

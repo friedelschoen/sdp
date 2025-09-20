@@ -22,6 +22,7 @@ const (
 	Underline
 	Strikethrough
 	Code
+	BigText
 )
 
 type Markup struct {
@@ -34,6 +35,7 @@ type MarkupText []Markup
 // ParseMarkup parses a limited subset of Markdown into MarkupText.
 //
 // Supported:
+//   - Big:			   ==text==
 //   - Code:           `code`
 //   - Bold:           **text**
 //   - Italic:         *text* or _text_
@@ -41,19 +43,19 @@ type MarkupText []Markup
 //   - Strikethrough:  ~~text~~
 type MarkupBuilder struct {
 	out   MarkupText
-	buf   strings.Builder
+	buf   []rune
 	state MarkupAttribute
 }
 
 func (b *MarkupBuilder) emit() {
-	if b.buf.Len() == 0 {
+	if len(b.buf) == 0 {
 		return
 	}
 	b.out = append(b.out, Markup{
 		Attr: b.state,
-		Text: b.buf.String(),
+		Text: string(b.buf),
 	})
-	b.buf.Reset()
+	b.buf = b.buf[:0]
 }
 
 func (b *MarkupBuilder) Feed(content string) {
@@ -64,31 +66,35 @@ func (b *MarkupBuilder) Feed(content string) {
 		// Markers—langste eerst: **, __, ~~, dan *, _
 		switch {
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\**"):
-			b.buf.WriteString("**")
+			b.buf = append(b.buf, '*', '*')
 			content = content[3:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\__"):
-			b.buf.WriteString("__")
+			b.buf = append(b.buf, '_', '_')
 			content = content[3:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\~~"):
-			b.buf.WriteString("~~")
+			b.buf = append(b.buf, '~', '~')
+			content = content[3:]
+			continue
+		case b.state&Code == 0 && strings.HasPrefix(content, "\\=="):
+			b.buf = append(b.buf, '=', '=')
 			content = content[3:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\*"):
-			b.buf.WriteRune('*')
+			b.buf = append(b.buf, '*')
 			content = content[2:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\_"):
-			b.buf.WriteRune('_')
+			b.buf = append(b.buf, '_')
 			content = content[2:]
 			continue
 		case strings.HasPrefix(content, "\\`"):
-			b.buf.WriteRune('`')
+			b.buf = append(b.buf, '`')
 			content = content[2:]
 			continue
 		case strings.HasPrefix(content, "\\\\"):
-			b.buf.WriteRune('\\')
+			b.buf = append(b.buf, '\\')
 			content = content[2:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "**"):
@@ -104,6 +110,11 @@ func (b *MarkupBuilder) Feed(content string) {
 		case b.state&Code == 0 && strings.HasPrefix(content, "~~"):
 			b.emit()
 			b.state ^= Strikethrough
+			content = content[2:]
+			continue
+		case b.state&Code == 0 && strings.HasPrefix(content, "=="):
+			b.emit()
+			b.state ^= BigText
 			content = content[2:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "*"):
@@ -123,7 +134,7 @@ func (b *MarkupBuilder) Feed(content string) {
 			continue
 		default:
 			chr, sz := utf8.DecodeRuneInString(content)
-			b.buf.WriteRune(chr)
+			b.buf = append(b.buf, chr)
 			content = content[sz:]
 		}
 	}
@@ -137,12 +148,12 @@ func (b *MarkupBuilder) Text() MarkupText {
 }
 
 func (b *MarkupBuilder) Dirty() bool {
-	return len(b.out) != 0 || b.buf.Len() != 0 || b.state != 0
+	return len(b.out) != 0 || len(b.buf) != 0 || b.state != 0
 }
 
 func (b *MarkupBuilder) Reset() {
 	b.out = nil
-	b.buf.Reset()
+	b.buf = nil
 	b.state = 0
 }
 
@@ -192,10 +203,20 @@ func (a MarkupAttribute) font(cfg PresConfig) *opentype.Font {
 	}
 }
 
+func (a MarkupAttribute) face(size float64, cfg PresConfig) font.Face {
+	font := a.font(cfg)
+
+	if hasBit(a, BigText) {
+		size *= cfg.BigText
+	}
+	face, _ := opentype.NewFace(font, &opentype.FaceOptions{DPI: 72, Size: size})
+	return face
+}
+
 // measureText was misspelled as MessureText; fixed and call sites updated.
 func (a MarkupAttribute) measureText(s string, size float64, cfg PresConfig) fixed.Int26_6 {
 	var x fixed.Int26_6
-	face, _ := opentype.NewFace(a.font(cfg), &opentype.FaceOptions{DPI: 72, Size: size})
+	face := a.face(size, cfg)
 	prevRune := rune(-1)
 	for _, r := range s {
 		if prevRune != -1 {
@@ -217,8 +238,8 @@ func (a MarkupAttribute) measureText(s string, size float64, cfg PresConfig) fix
 func (m MarkupText) words() iter.Seq2[MarkupAttribute, []rune] {
 	return func(yield func(MarkupAttribute, []rune) bool) {
 		for _, part := range m {
-			if part.Attr&Code != 0 {
-				/* do not split code-sections */
+			if part.Attr&(Code|BigText) != 0 {
+				/* do not split code-sections when code-section of bigtext-section */
 				if !yield(part.Attr, []rune(part.Text)) {
 					return
 				}
@@ -292,8 +313,7 @@ func (m MarkupText) wrapLines(bounds image.Rectangle, size float64, cfg PresConf
 
 func (m MarkupText) height(size float64, cfg PresConfig) (h, asc fixed.Int26_6) {
 	for _, part := range m {
-		font := part.Attr.font(cfg)
-		face, _ := opentype.NewFace(font, &opentype.FaceOptions{Size: size, DPI: 72})
+		face := part.Attr.face(size, cfg)
 		h = max(h, face.Metrics().Height)
 		asc = max(asc, face.Metrics().Ascent)
 	}
@@ -413,7 +433,7 @@ func (m MarkupText) Draw(img draw.Image, bounds image.Rectangle, cfg PresConfig)
 		st := lineRun{underline: false} // strikethrough-run
 
 		for _, part := range text {
-			face, _ := opentype.NewFace(part.Attr.font(cfg), &opentype.FaceOptions{DPI: 72, Size: size})
+			face := part.Attr.face(size, cfg)
 
 			// start/stop runs op stijlwissel per part
 			hasUL := part.Attr&Underline != 0

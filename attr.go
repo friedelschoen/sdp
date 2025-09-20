@@ -63,6 +63,7 @@ type PresConfig struct {
 	TabSize        int
 	NewlineSpacing float64
 	BigText        float64
+	FontSize       float64 /* percent of diagonal px */
 }
 
 func (c *PresConfig) AddAttribute(str string) error {

@@ -107,6 +107,7 @@ func ParsePresentation(r io.Reader) (*Presentation, error) {
 		markup.Reset()
 	}
 	pres.Slides = append(pres.Slides, Slide{slideconf, slides})
+	pres.Slides = append(pres.Slides, FinalSlide(globalconf))
 
 	return &pres, scanner.Err()
 }

@@ -1,7 +1,6 @@
 package sdp
 
 import (
-	"fmt"
 	"image"
 	"image/draw"
 	"iter"
@@ -25,6 +24,7 @@ const (
 	Strikethrough
 	Code
 	BigText
+	NoWrap
 )
 
 type Markup struct {
@@ -43,6 +43,7 @@ type MarkupText []Markup
 //   - Italic:         *text* or _text_
 //   - Underline:      __text__
 //   - Strikethrough:  ~~text~~
+//   - No Wrap:  	   @text@
 type MarkupBuilder struct {
 	out   MarkupText
 	buf   []rune
@@ -70,70 +71,62 @@ func (b *MarkupBuilder) Feed(content string) {
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\**"):
 			b.buf = append(b.buf, '*', '*')
 			content = content[3:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\__"):
 			b.buf = append(b.buf, '_', '_')
 			content = content[3:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\~~"):
 			b.buf = append(b.buf, '~', '~')
 			content = content[3:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\=="):
 			b.buf = append(b.buf, '=', '=')
 			content = content[3:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\*"):
 			b.buf = append(b.buf, '*')
 			content = content[2:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "\\_"):
 			b.buf = append(b.buf, '_')
 			content = content[2:]
-			continue
+		case b.state&Code == 0 && strings.HasPrefix(content, "\\@"):
+			b.buf = append(b.buf, '@')
+			content = content[2:]
 		case strings.HasPrefix(content, "\\`"):
 			b.buf = append(b.buf, '`')
 			content = content[2:]
-			continue
 		case strings.HasPrefix(content, "\\\\"):
 			b.buf = append(b.buf, '\\')
 			content = content[2:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "**"):
 			b.flush()
 			b.state ^= Bold
 			content = content[2:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "__"):
 			b.flush()
 			b.state ^= Underline
 			content = content[2:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "~~"):
 			b.flush()
 			b.state ^= Strikethrough
 			content = content[2:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "=="):
 			b.flush()
 			b.state ^= BigText
 			content = content[2:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "*"):
 			b.flush()
 			b.state ^= Italic
 			content = content[1:]
-			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "_"):
 			b.flush()
 			b.state ^= Italic
 			content = content[1:]
-			continue
+		case b.state&Code == 0 && strings.HasPrefix(content, "@"):
+			b.flush()
+			b.state ^= NoWrap
+			content = content[1:]
 		case strings.HasPrefix(content, "`"):
 			b.flush()
 			b.state ^= Code
 			content = content[1:]
-			continue
 		default:
 			chr, sz := utf8.DecodeRuneInString(content)
 			b.buf = append(b.buf, chr)
@@ -240,7 +233,7 @@ func (a MarkupAttribute) measureText(s string, size float64, cfg PresConfig) fix
 func (m MarkupText) words() iter.Seq2[MarkupAttribute, []rune] {
 	return func(yield func(MarkupAttribute, []rune) bool) {
 		for _, part := range m {
-			if part.Attr&(Code|BigText) != 0 {
+			if part.Attr&(Code|BigText|NoWrap) != 0 {
 				/* do not split code-sections when code-section of bigtext-section */
 				if !yield(part.Attr, []rune(part.Text)) {
 					return
@@ -273,7 +266,6 @@ func (m MarkupText) wrapLines(bounds image.Rectangle, size float64, cfg PresConf
 		var width fixed.Int26_6
 		var line MarkupText
 		for attr, word := range m.words() {
-			fmt.Printf("- %q\n", string(word))
 			if nl := slices.Index(word, '\n'); nl != -1 {
 				if !yield(width, line) {
 					return

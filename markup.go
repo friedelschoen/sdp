@@ -47,7 +47,7 @@ type MarkupBuilder struct {
 	state MarkupAttribute
 }
 
-func (b *MarkupBuilder) emit() {
+func (b *MarkupBuilder) flush() {
 	if len(b.buf) == 0 {
 		return
 	}
@@ -98,37 +98,37 @@ func (b *MarkupBuilder) Feed(content string) {
 			content = content[2:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "**"):
-			b.emit()
+			b.flush()
 			b.state ^= Bold
 			content = content[2:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "__"):
-			b.emit()
+			b.flush()
 			b.state ^= Underline
 			content = content[2:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "~~"):
-			b.emit()
+			b.flush()
 			b.state ^= Strikethrough
 			content = content[2:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "=="):
-			b.emit()
+			b.flush()
 			b.state ^= BigText
 			content = content[2:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "*"):
-			b.emit()
+			b.flush()
 			b.state ^= Italic
 			content = content[1:]
 			continue
 		case b.state&Code == 0 && strings.HasPrefix(content, "_"):
-			b.emit()
+			b.flush()
 			b.state ^= Italic
 			content = content[1:]
 			continue
 		case strings.HasPrefix(content, "`"):
-			b.emit()
+			b.flush()
 			b.state ^= Code
 			content = content[1:]
 			continue
@@ -138,11 +138,11 @@ func (b *MarkupBuilder) Feed(content string) {
 			content = content[sz:]
 		}
 	}
-	b.emit()
+	b.flush()
 }
 
 func (b *MarkupBuilder) Text() MarkupText {
-	b.emit() /* flush all contents */
+	b.flush() /* flush all contents */
 
 	return b.out
 }
@@ -157,43 +157,43 @@ func (b *MarkupBuilder) Reset() {
 	b.state = 0
 }
 
-func hasBit[T ~int](base, has T) bool {
-	return base&has == has
+func (a MarkupAttribute) has(has MarkupAttribute) bool {
+	return a&has == has
 }
 
 func (a MarkupAttribute) font(cfg PresConfig) *opentype.Font {
 	switch {
-	case hasBit(a, Code|Bold|Italic):
+	case a.has(Code | Bold | Italic):
 		if cfg.MonoFonts.BoldItalic != nil {
 			return cfg.MonoFonts.BoldItalic
 		}
 		fallthrough
-	case hasBit(a, Code|Bold):
+	case a.has(Code | Bold):
 		if cfg.MonoFonts.Bold != nil {
 			return cfg.MonoFonts.Bold
 		}
 		fallthrough
-	case hasBit(a, Code|Italic):
+	case a.has(Code | Italic):
 		if cfg.MonoFonts.Italic != nil {
 			return cfg.MonoFonts.Italic
 		}
 		fallthrough
-	case hasBit(a, Code):
+	case a.has(Code):
 		if cfg.MonoFonts.Regular != nil {
 			return cfg.MonoFonts.Regular
 		}
 		fallthrough
-	case hasBit(a, Bold|Italic):
+	case a.has(Bold | Italic):
 		if cfg.Fonts.BoldItalic != nil {
 			return cfg.Fonts.BoldItalic
 		}
 		fallthrough
-	case hasBit(a, Bold):
+	case a.has(Bold):
 		if cfg.Fonts.Bold != nil {
 			return cfg.Fonts.Bold
 		}
 		fallthrough
-	case hasBit(a, Italic):
+	case a.has(Italic):
 		if cfg.Fonts.Italic != nil {
 			return cfg.Fonts.Italic
 		}
@@ -206,7 +206,7 @@ func (a MarkupAttribute) font(cfg PresConfig) *opentype.Font {
 func (a MarkupAttribute) face(size float64, cfg PresConfig) font.Face {
 	font := a.font(cfg)
 
-	if hasBit(a, BigText) {
+	if a.has(BigText) {
 		size *= cfg.BigText
 	}
 	face, _ := opentype.NewFace(font, &opentype.FaceOptions{DPI: 72, Size: size})

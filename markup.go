@@ -378,6 +378,9 @@ func (m MarkupText) totalHeight(bounds image.Rectangle, size float64, cfg PresCo
 }
 
 func (m MarkupText) findSize(bounds image.Rectangle, cfg PresConfig) (size float64, height fixed.Int26_6) {
+	if len(m) == 0 {
+		return
+	}
 	lo := float64(1)
 	hi := float64(1)
 	for {

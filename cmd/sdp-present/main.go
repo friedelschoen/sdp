@@ -28,6 +28,11 @@ func main() {
 	}
 	fullscreen := false
 
+	preswin, err := sdl.CreateWindow("Simple Descriptive Presentations - Presenter - "+filename, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, 1000, 600, sdl.WINDOW_SHOWN)
+	if err != nil {
+		panic(err)
+	}
+
 	index := 0
 	running := true
 	for running {
@@ -41,8 +46,11 @@ func main() {
 			switch ev.Event {
 			case sdl.WINDOWEVENT_CLOSE:
 				win.Destroy()
+				preswin.Destroy()
 				running = false
-			case sdl.WINDOWEVENT_EXPOSED, sdl.WINDOWEVENT_RESIZED, sdl.WINDOWEVENT_SIZE_CHANGED:
+			case sdl.WINDOWEVENT_RESIZED:
+				fallthrough
+			case sdl.WINDOWEVENT_EXPOSED, sdl.WINDOWEVENT_SIZE_CHANGED:
 				dirty = true
 			}
 		case *sdl.KeyboardEvent:
@@ -71,6 +79,7 @@ func main() {
 				}
 			case sdl.K_q:
 				win.Destroy()
+				preswin.Destroy()
 				running = false
 			}
 		}
@@ -85,6 +94,13 @@ func main() {
 			}
 			pres.Slides[index].Draw(img, img.Bounds())
 			win.UpdateSurface()
+
+			img, err = preswin.GetSurface()
+			if err != nil {
+				panic(err)
+			}
+			sdp.DrawPresenter(img, img.Bounds(), pres, index)
+			preswin.UpdateSurface()
 			dirty = false
 		}
 	}

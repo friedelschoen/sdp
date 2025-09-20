@@ -18,6 +18,7 @@ type Presentation struct {
 
 type Slide struct {
 	Conf    PresConfig
+	Notes   string
 	Content []SlideContent
 }
 
@@ -27,9 +28,9 @@ func (s *Slide) Draw(img draw.Image, bounds image.Rectangle) {
 	if len(s.Content) == 0 {
 		return
 	}
-	dw := img.Bounds().Dx() / len(s.Content)
+	dw := bounds.Dx() / len(s.Content)
 	for i, cnt := range s.Content {
-		cnt.Draw(img, image.Rect(bounds.Min.X+dw*i, bounds.Min.Y, bounds.Min.X+dw*(i+1), bounds.Max.Y), s.Conf)
+		cnt.Draw(img, image.Rect(bounds.Min.X+i*dw, bounds.Min.Y, bounds.Min.X+(i+1)*dw, bounds.Max.Y), s.Conf)
 	}
 }
 
@@ -43,9 +44,10 @@ func ParsePresentation(r io.Reader) (*Presentation, error) {
 	var markup MarkupBuilder
 
 	var slides []SlideContent
+	var notes strings.Builder
 
-	var globalconf = defaultConf()
-	var slideconf = globalconf
+	var presconf = defaultConf()
+	var slideconf = presconf
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -56,6 +58,10 @@ func ParsePresentation(r io.Reader) (*Presentation, error) {
 			markup.Feed("\n")
 		case line[0] == '#':
 			/* ignore line -> comment */
+			if notes.Len() > 0 {
+				notes.WriteRune('\n')
+			}
+			notes.WriteString(strings.TrimSpace(line[1:]))
 			continue
 		case line == "%%%":
 			if markup.Dirty() {
@@ -67,12 +73,13 @@ func ParsePresentation(r io.Reader) (*Presentation, error) {
 				slides = append(slides, markup.Text())
 				markup.Reset()
 			}
-			pres.Slides = append(pres.Slides, Slide{slideconf, slides})
+			pres.Slides = append(pres.Slides, Slide{slideconf, notes.String(), slides})
 			slides = nil
-			slideconf = globalconf
+			slideconf = presconf
+			notes.Reset()
 		case strings.HasPrefix(line, "%set "):
 			line = strings.TrimLeftFunc(line[4:], unicode.IsSpace)
-			if err := globalconf.AddAttribute(line); err != nil {
+			if err := presconf.AddAttribute(line); err != nil {
 				fmt.Fprintf(os.Stderr, "option `%s`: %v\n", line, err)
 			}
 			if markup.Dirty() {
@@ -106,8 +113,8 @@ func ParsePresentation(r io.Reader) (*Presentation, error) {
 		slides = append(slides, markup.Text())
 		markup.Reset()
 	}
-	pres.Slides = append(pres.Slides, Slide{slideconf, slides})
-	pres.Slides = append(pres.Slides, FinalSlide(globalconf))
-
+	pres.Slides = append(pres.Slides, Slide{slideconf, notes.String(), slides})
+	pres.Slides = append(pres.Slides, FinalSlide(presconf))
+	pres.Conf = presconf
 	return &pres, scanner.Err()
 }

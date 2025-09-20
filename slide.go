@@ -135,7 +135,7 @@ func FinalSlide(cfg PresConfig) Slide {
 	cfg.FontSize = 3
 	cfg.VAlign = Top
 
-	return Slide{cfg, []SlideContent{
+	return Slide{cfg, "", []SlideContent{
 		MarkupText{
 			Markup{
 				Attr: Bold,

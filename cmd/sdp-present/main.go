@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 
+	"github.com/friedelschoen/sdp"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -13,7 +14,7 @@ func main() {
 		panic(err)
 	}
 
-	pres, err := ParsePresentation(file)
+	pres, err := sdp.ParsePresentation(file)
 	if err != nil {
 		panic(err)
 	}

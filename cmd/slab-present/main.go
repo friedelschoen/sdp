@@ -3,18 +3,18 @@ package main
 import (
 	"os"
 
-	"github.com/friedelschoen/sdp"
+	"github.com/friedelschoen/slab"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 func main() {
-	filename := "example.sdp"
+	filename := "example.slab"
 	file, err := os.Open(filename)
 	if err != nil {
 		panic(err)
 	}
 
-	pres, err := sdp.ParsePresentation(file)
+	pres, err := slab.ParsePresentation(file)
 	if err != nil {
 		panic(err)
 	}
@@ -22,13 +22,13 @@ func main() {
 	sdl.Init(sdl.INIT_VIDEO)
 	defer sdl.Quit()
 
-	win, err := sdl.CreateWindow("Simple Descriptive Presentations - "+filename, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, 800, 600, sdl.WINDOW_SHOWN)
+	win, err := sdl.CreateWindow("slab - "+filename, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, 800, 600, sdl.WINDOW_SHOWN)
 	if err != nil {
 		panic(err)
 	}
 	fullscreen := false
 
-	preswin, err := sdl.CreateWindow("Simple Descriptive Presentations - Presenter - "+filename, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, 1000, 600, sdl.WINDOW_SHOWN)
+	preswin, err := sdl.CreateWindow("slab - Presenter - "+filename, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, 1000, 600, sdl.WINDOW_SHOWN)
 	if err != nil {
 		panic(err)
 	}
@@ -99,7 +99,7 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			sdp.DrawPresenter(img, img.Bounds(), pres, index)
+			slab.DrawPresenter(img, img.Bounds(), pres, index)
 			preswin.UpdateSurface()
 			dirty = false
 		}

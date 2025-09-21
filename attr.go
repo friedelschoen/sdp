@@ -1,4 +1,4 @@
-package sdp
+package slab
 
 import (
 	"fmt"
